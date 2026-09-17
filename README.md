@@ -24,8 +24,6 @@
 - Обновляет актуальные конфиги из [**моего репозитория**](https://github.com/ChapaGG/Mihomo)
 - Работает с планировщиком заданий
 
-
-
 &nbsp;
 
 ## ⚡️ Быстрый старт (установка/обновление/удаление)
@@ -36,8 +34,18 @@
 curl -Ls https://raw.githubusercontent.com/ChapaGG/Xkeen-Service/main/setup.sh | sh
 ```
 
+&nbsp;
+
 ## 🙏 Благодарности
 
 - [**Skrill0/XKeen**](https://github.com/Skrill0/XKeen)  
 - [**jameszeroX/XKeen**](https://github.com/jameszeroX/XKeen)
 - [**zxc-rv/XKeen-UI**](https://github.com/zxc-rv/XKeen-UI)
+
+&nbsp;
+
+## 🪙 Понравился проект? Поддержи разработку
+
+- [**Cloudtips**](https://pay.cloudtips.ru/p/a7b5efda)
+
+- Банковская карта: `2204 2402 3029 6305`

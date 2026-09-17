@@ -1,12 +1,10 @@
 #!/bin/sh
 # xkeen-service.sh - Управление бэкапами и обновлением конфигурации XKeen/Mihomo
-# Расположение: /opt/sbin/xkeen-service.sh (симлинк: /opt/sbin/xkeen-service)
+# Расположение: /opt/sbin/xkeen-service.sh (симлинк: /opt/sbin/xkeen-service, /opt/bin/xkeen-service)
 # Настройки:   /opt/etc/xkeen/xkeen-service.json
 # Установка:   curl -Ls https://raw.githubusercontent.com/ChapaGG/Xkeen-Service/main/setup.sh | sh
 
 VERSION="1.0.0"
-
-set -e
 
 # ------------------------- НАСТРОЙКИ -------------------------
 BACKUP_DIR="/opt/backups"
@@ -32,15 +30,18 @@ LINK_PATH_BIN="/opt/bin/xkeen-service"
 # ------------------------- ФУНКЦИИ -------------------------
 
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $*" | tee -a "$LOG_FILE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $*" >> "$LOG_FILE"
+    echo "$*"
 }
 
 success() {
-    echo -e "\033[32m$*\033[0m" | tee -a "$LOG_FILE"
+    printf "\033[32m%s\033[0m\n" "$*"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $*" >> "$LOG_FILE"
 }
 
 error() {
-    echo -e "\033[31m$*\033[0m" | tee -a "$LOG_FILE"
+    printf "\033[31m%s\033[0m\n" "$*"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: $*" >> "$LOG_FILE"
 }
 
 ensure_backup_dir() {
@@ -71,7 +72,8 @@ cfg_get() {
 
 backup_xkeen() {
     log "Создание бэкапа XKeen..."
-    local ts=$(date '+%Y%m%d_%H%M%S')
+    local ts
+    ts=$(date '+%Y%m%d_%H%M%S')
     local archive="${BACKUP_DIR}/xkeen_backup_${ts}.tar.gz"
     tar -czf "$archive" -C /opt/etc/xkeen . 2>/dev/null || {
         error "Ошибка при создании бэкапа XKeen"
@@ -82,7 +84,8 @@ backup_xkeen() {
 
 backup_mihomo() {
     log "Создание бэкапа Mihomo..."
-    local ts=$(date '+%Y%m%d_%H%M%S')
+    local ts
+    ts=$(date '+%Y%m%d_%H%M%S')
     local archive="${BACKUP_DIR}/mihomo_backup_${ts}.tar.gz"
     tar -czf "$archive" -C /opt/etc/mihomo . 2>/dev/null || {
         error "Ошибка при создании бэкапа Mihomo"
@@ -93,7 +96,8 @@ backup_mihomo() {
 
 backup_firmware() {
     log "Создание бэкапа прошивки Keenetic..."
-    local ts=$(date '+%Y%m%d_%H%M%S')
+    local ts
+    ts=$(date '+%Y%m%d_%H%M%S')
     local dest="${BACKUP_DIR}/firmware_${ts}.bin"
     ndmc -c "copy flash:/firmware $dest" 2>/dev/null || {
         error "Ошибка при создании бэкапа прошивки (возможно, ndmc недоступен)"
@@ -104,7 +108,8 @@ backup_firmware() {
 
 backup_startup_config() {
     log "Создание бэкапа startup-config..."
-    local ts=$(date '+%Y%m%d_%H%M%S')
+    local ts
+    ts=$(date '+%Y%m%d_%H%M%S')
     local dest="${BACKUP_DIR}/startup-config_${ts}.txt"
     ndmc -c "copy running-config startup-config" 2>/dev/null || {
         error "Ошибка при сохранении running-config в startup-config"
@@ -132,7 +137,8 @@ update_configs() {
         fi
     done
 
-    local dt=$(date '+%Y-%m-%d_%H_%M')
+    local dt
+    dt=$(date '+%Y-%m-%d_%H_%M')
     for f in $files; do
         echo "# Обновлено: $dt" | cat - "${TMP_DIR}/$f" > "${TMP_DIR}/tmp_$f"
         mv "${TMP_DIR}/tmp_$f" "${TMP_DIR}/$f"
@@ -154,7 +160,8 @@ restart_xkeen() {
     sleep 2
     if /opt/etc/init.d/S99xkeen start 2>/dev/null; then
         sleep 3
-        local log_line=$(tail -n 5 /opt/var/log/xkeen/xkeen.log 2>/dev/null | grep -i "error\|fail" || true)
+        local log_line
+        log_line=$(tail -n 5 /opt/var/log/xkeen/xkeen.log 2>/dev/null | grep -i "error\|fail" || true)
         if [ -z "$log_line" ]; then
             success "XKeen успешно перезапущен. Ошибок в логе не обнаружено."
         else

@@ -139,8 +139,14 @@ update_configs() {
 
     local dt
     dt=$(date '+%Y-%m-%d_%H_%M')
+
     for f in $files; do
-        echo "# Обновлено: $dt" | cat - "${TMP_DIR}/$f" > "${TMP_DIR}/tmp_$f"
+        local prefix="#"
+        # Для JSON-файлов используем // в качестве комментария
+        case "$f" in
+            *.json) prefix="//" ;;
+        esac
+        echo "${prefix} Обновлено: $dt" | cat - "${TMP_DIR}/$f" > "${TMP_DIR}/tmp_$f"
         mv "${TMP_DIR}/tmp_$f" "${TMP_DIR}/$f"
     done
 

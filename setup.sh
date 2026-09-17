@@ -5,12 +5,21 @@
 # ---------- КОНФИГ ----------
 REPO_RAW="https://raw.githubusercontent.com/ChapaGG/Xkeen-Service/main"
 REPO_URL="https://github.com/ChapaGG/Xkeen-Service"
-SCRIPT_NAME="xkeen-service"
+
+# Физическое имя файла в репозитории и на устройстве
+SCRIPT_FILE="xkeen-service.sh"
+# Имя команды (симлинк без расширения)
+SCRIPT_CMD="xkeen-service"
+
 INSTALL_DIR="/opt/sbin"
 LINK_DIR="/opt/bin"
 PROFILE_FILE="/opt/etc/profile"
 CONFIG_FILE="/opt/etc/xkeen/xkeen-service.json"
 BACKUP_DIR="/opt/backups"
+
+INSTALL_PATH="${INSTALL_DIR}/${SCRIPT_FILE}"
+LINK_PATH_SBIN="${INSTALL_DIR}/${SCRIPT_CMD}"
+LINK_PATH_BIN="${LINK_DIR}/${SCRIPT_CMD}"
 
 # ---------- ЦВЕТА ----------
 RED='\033[1;31m'
@@ -23,16 +32,16 @@ WHITE='\033[1;37m'
 GRAY='\033[0;90m'
 NC='\033[0m'
 
-# ---------- ЭМОДЗИ ----------
-OK="✅"
-FAIL="❌"
-INFO="ℹ️"
-WARN="⚠️"
-ROCKET="🚀"
-TRASH="🗑️"
-GEAR="⚙️"
-BOX="📦"
-KEY="🔑"
+# ---------- ЭМОДЗИ / СИМВОЛЫ ----------
+OK="[+]"
+FAIL="[-]"
+INFO="[i]"
+WARN="[!]"
+ROCKET=">>"
+TRASH="XX"
+GEAR="**"
+BOX="[]"
+KEY="*"
 BAR="────────────────────────────────────────────"
 
 # ---------- ВЫВОД ----------
@@ -87,9 +96,11 @@ run_spinner() {
 
 # ---------- СТАТУС ----------
 get_status() {
-    if [ -f "${INSTALL_DIR}/${SCRIPT_NAME}" ]; then
+    if [ -f "$INSTALL_PATH" ] || [ -f "$LINK_PATH_SBIN" ]; then
         INSTALLED=1
-        INSTALLED_VERSION=$(grep -m1 '^VERSION=' "${INSTALL_DIR}/${SCRIPT_NAME}" 2>/dev/null | sed 's/.*"\(.*\)".*/\1/')
+        local check_file="$INSTALL_PATH"
+        [ -f "$check_file" ] || check_file="$LINK_PATH_SBIN"
+        INSTALLED_VERSION=$(grep -m1 '^VERSION=' "$check_file" 2>/dev/null | sed 's/.*"\(.*\)".*/\1/')
         [ -n "$INSTALLED_VERSION" ] || INSTALLED_VERSION="unknown"
     else
         INSTALLED=0
@@ -115,32 +126,38 @@ get_status() {
 # ---------- УСТАНОВКА ----------
 do_install() {
     echo ""
-    msg_info "${ROCKET} Установка ${SCRIPT_NAME}..."
+    msg_info "${ROCKET} Установка ${SCRIPT_FILE}..."
 
-    if [ -f "${INSTALL_DIR}/${SCRIPT_NAME}" ]; then
+    # Автопереустановка: удаляем старую версию
+    if [ -f "$INSTALL_PATH" ] || [ -L "$LINK_PATH_SBIN" ] || [ -L "$LINK_PATH_BIN" ]; then
         msg_warn "Найдена существующая установка — переустанавливаю..."
-        rm -f "${INSTALL_DIR}/${SCRIPT_NAME}"
-        [ -L "${LINK_DIR}/${SCRIPT_NAME}" ] && rm -f "${LINK_DIR}/${SCRIPT_NAME}"
+        rm -f "$INSTALL_PATH" "$LINK_PATH_SBIN" "$LINK_PATH_BIN" 2>/dev/null || true
     fi
 
-    local tmp="/tmp/${SCRIPT_NAME}.install.$$"
-    if run_spinner "Скачивание ${SCRIPT_NAME} из репозитория..." \
-        curl -Lsfo "$tmp" "${REPO_RAW}/${SCRIPT_NAME}"; then
+    local tmp="/tmp/${SCRIPT_FILE}.install.$$"
+    if run_spinner "Скачивание ${SCRIPT_FILE} из репозитория..." \
+        curl -Lsfo "$tmp" "${REPO_RAW}/${SCRIPT_FILE}"; then
         msg_ok "Скрипт скачан"
     else
-        die "Не удалось скачать ${SCRIPT_NAME}. Проверьте URL."
+        die "Не удалось скачать ${SCRIPT_FILE}. Проверьте URL."
     fi
 
     mkdir -p "${INSTALL_DIR}"
-    mv "$tmp" "${INSTALL_DIR}/${SCRIPT_NAME}"
-    chmod +x "${INSTALL_DIR}/${SCRIPT_NAME}"
-    msg_ok "Установлен: ${INSTALL_DIR}/${SCRIPT_NAME}"
+    mv "$tmp" "$INSTALL_PATH"
+    chmod +x "$INSTALL_PATH"
+    msg_ok "Установлен: ${INSTALL_PATH}"
 
+    # Симлинк без .sh в /opt/sbin — вызов xkeen-service
+    ln -sf "$INSTALL_PATH" "$LINK_PATH_SBIN"
+    msg_ok "Создан симлинк: ${LINK_PATH_SBIN}"
+
+    # Симлинк без .sh в /opt/bin — на случай если /opt/sbin не в PATH
     if [ -d "$LINK_DIR" ]; then
-        ln -sf "${INSTALL_DIR}/${SCRIPT_NAME}" "${LINK_DIR}/${SCRIPT_NAME}"
-        msg_ok "Создан симлинк: ${LINK_DIR}/${SCRIPT_NAME}"
+        ln -sf "$INSTALL_PATH" "$LINK_PATH_BIN"
+        msg_ok "Создан симлинк: ${LINK_PATH_BIN}"
     fi
 
+    # Файл настроек — не перезаписываем существующий
     local cfg_dir
     cfg_dir=$(dirname "$CONFIG_FILE")
     [ -d "$cfg_dir" ] || mkdir -p "$cfg_dir"
@@ -152,6 +169,7 @@ do_install() {
         msg_ok "Создан файл настроек: ${CONFIG_FILE}"
     fi
 
+    # PATH
     if [ -f "$PROFILE_FILE" ]; then
         if ! grep -q "/opt/sbin" "$PROFILE_FILE" 2>/dev/null; then
             echo 'export PATH=/opt/sbin:/opt/bin:$PATH' >> "$PROFILE_FILE"
@@ -169,9 +187,9 @@ do_install() {
 # ---------- ОБНОВЛЕНИЕ ----------
 do_update() {
     echo ""
-    msg_info "${GEAR} Обновление ${SCRIPT_NAME}..."
+    msg_info "${GEAR} Обновление ${SCRIPT_FILE}..."
 
-    if [ ! -f "${INSTALL_DIR}/${SCRIPT_NAME}" ]; then
+    if [ ! -f "$INSTALL_PATH" ]; then
         msg_warn "Скрипт не установлен. Выполняю установку..."
         do_install
         return 0
@@ -180,20 +198,21 @@ do_update() {
     [ -d "$BACKUP_DIR" ] || mkdir -p "$BACKUP_DIR"
     local ts
     ts=$(date '+%Y%m%d_%H%M%S')
-    cp "${INSTALL_DIR}/${SCRIPT_NAME}" "${BACKUP_DIR}/${SCRIPT_NAME}.bak_${ts}"
-    msg_ok "Бэкап старой версии: ${BACKUP_DIR}/${SCRIPT_NAME}.bak_${ts}"
+    cp "$INSTALL_PATH" "${BACKUP_DIR}/${SCRIPT_FILE}.bak_${ts}"
+    msg_ok "Бэкап старой версии: ${BACKUP_DIR}/${SCRIPT_FILE}.bak_${ts}"
 
-    local tmp="/tmp/${SCRIPT_NAME}.update.$$"
+    local tmp="/tmp/${SCRIPT_FILE}.update.$$"
     if run_spinner "Скачивание обновления..." \
-        curl -Lsfo "$tmp" "${REPO_RAW}/${SCRIPT_NAME}"; then
+        curl -Lsfo "$tmp" "${REPO_RAW}/${SCRIPT_FILE}"; then
         msg_ok "Обновление скачано"
     else
-        die "Не удалось скачать обновление ${SCRIPT_NAME}."
+        die "Не удалось скачать обновление ${SCRIPT_FILE}."
     fi
 
     chmod +x "$tmp"
-    mv "$tmp" "${INSTALL_DIR}/${SCRIPT_NAME}"
-    ln -sf "${INSTALL_DIR}/${SCRIPT_NAME}" "${LINK_DIR}/${SCRIPT_NAME}" 2>/dev/null || true
+    mv "$tmp" "$INSTALL_PATH"
+    ln -sf "$INSTALL_PATH" "$LINK_PATH_SBIN" 2>/dev/null || true
+    ln -sf "$INSTALL_PATH" "$LINK_PATH_BIN" 2>/dev/null || true
 
     msg_ok "Обновление завершено"
     msg_info "Файл настроек не затронут: ${CONFIG_FILE}"
@@ -202,20 +221,24 @@ do_update() {
 # ---------- УДАЛЕНИЕ ----------
 do_uninstall() {
     echo ""
-    msg_info "${TRASH} Удаление ${SCRIPT_NAME}..."
+    msg_info "${TRASH} Удаление ${SCRIPT_FILE}..."
 
     if crontab -l 2>/dev/null | grep -q "xkeen-service -u"; then
         crontab -l 2>/dev/null | grep -v "xkeen-service -u" | crontab -
         msg_ok "Задание cron удалено"
     fi
 
-    if [ -f "${INSTALL_DIR}/${SCRIPT_NAME}" ]; then
-        rm -f "${INSTALL_DIR}/${SCRIPT_NAME}"
-        msg_ok "Удалён ${INSTALL_DIR}/${SCRIPT_NAME}"
+    if [ -f "$INSTALL_PATH" ]; then
+        rm -f "$INSTALL_PATH"
+        msg_ok "Удалён ${INSTALL_PATH}"
     fi
-    if [ -L "${LINK_DIR}/${SCRIPT_NAME}" ]; then
-        rm -f "${LINK_DIR}/${SCRIPT_NAME}"
-        msg_ok "Удалён симлинк ${LINK_DIR}/${SCRIPT_NAME}"
+    if [ -L "$LINK_PATH_SBIN" ] || [ -f "$LINK_PATH_SBIN" ]; then
+        rm -f "$LINK_PATH_SBIN"
+        msg_ok "Удалён ${LINK_PATH_SBIN}"
+    fi
+    if [ -L "$LINK_PATH_BIN" ] || [ -f "$LINK_PATH_BIN" ]; then
+        rm -f "$LINK_PATH_BIN"
+        msg_ok "Удалён ${LINK_PATH_BIN}"
     fi
 
     if [ -f "$CONFIG_FILE" ]; then
@@ -258,6 +281,7 @@ finish_setup() {
     echo -e "${GRAY}   ${BAR}${NC}"
     echo ""
     msg_plain "Запуск:      ${WHITE}xkeen-service -h${NC}"
+    msg_plain "           или ${WHITE}xkeen-service.sh -h${NC}"
     msg_plain "Настройки:   ${WHITE}${CONFIG_FILE}${NC}"
     msg_plain "Лог:         ${WHITE}${BACKUP_DIR}/xkeen-service.log${NC}"
     msg_plain "Бэкапы:      ${WHITE}${BACKUP_DIR}${NC}"

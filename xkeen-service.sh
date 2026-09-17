@@ -1,17 +1,21 @@
 #!/bin/sh
 # xkeen-service - Управление бэкапами и обновлением конфигурации XKeen/Mihomo
 # Расположение: /opt/sbin/xkeen-service
-# Установка: curl -Ls https://raw.githubusercontent.com/ChapaGG/Xkeen-Service/main/setup.sh | sh
+# Настройки:   /opt/etc/xkeen/xkeen-service.json
+# Установка:   curl -Ls https://raw.githubusercontent.com/ChapaGG/Xkeen-Service/main/setup.sh | sh
+
+VERSION="1.0.0"
 
 set -e
 
 # ------------------------- НАСТРОЙКИ -------------------------
 BACKUP_DIR="/opt/backups"
 LOG_FILE="${BACKUP_DIR}/xkeen-service.log"
+CONFIG_FILE="/opt/etc/xkeen/xkeen-service.json"
 
 # Репозиторий со скриптами (этот)
 REPO_SCRIPTS="https://github.com/ChapaGG/Xkeen-Service"
-# Репозиторий с конфигурациями (откуда тянем config.yaml, *.lst, xkeen.json)
+# Репозиторий с конфигурациями
 REPO_CONFIG_RAW="https://raw.githubusercontent.com/ChapaGG/Mihomo/main"
 
 TMP_DIR="/tmp/xkeen-service_$$"
@@ -38,6 +42,28 @@ error() {
 
 ensure_backup_dir() {
     [ -d "$BACKUP_DIR" ] || mkdir -p "$BACKUP_DIR"
+}
+
+ensure_config() {
+    local cfg_dir
+    cfg_dir=$(dirname "$CONFIG_FILE")
+    [ -d "$cfg_dir" ] || mkdir -p "$cfg_dir"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        printf '{}\n' > "$CONFIG_FILE"
+        log "Создан файл настроек: $CONFIG_FILE"
+    fi
+}
+
+cfg_get() {
+    local key="$1"
+    local default="$2"
+    if command -v jq >/dev/null 2>&1 && [ -s "$CONFIG_FILE" ]; then
+        local val
+        val=$(jq -r --arg k "$key" '.[$k] // empty' "$CONFIG_FILE" 2>/dev/null)
+        [ -n "$val" ] && echo "$val" || echo "$default"
+    else
+        echo "$default"
+    fi
 }
 
 backup_xkeen() {
@@ -165,6 +191,21 @@ self_update() {
     success "xkeen-service обновлён до последней версии."
 }
 
+show_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        echo "Файл настроек: $CONFIG_FILE"
+        echo "----------------------------------------"
+        cat "$CONFIG_FILE"
+        echo "----------------------------------------"
+    else
+        error "Файл настроек не найден: $CONFIG_FILE"
+    fi
+}
+
+show_version() {
+    echo "xkeen-service v${VERSION}"
+}
+
 show_help() {
     cat <<EOF
 Использование: xkeen-service [ОПЦИЯ]
@@ -175,7 +216,14 @@ show_help() {
   -c        Показать текущие задания cron
   -a        Добавить задание cron для ежедневного обновления в 4:00
   -s        Обновить сам скрипт xkeen-service до последней версии
+  -cfg      Показать содержимое файла настроек
+  -v        Показать версию скрипта
   -h        Показать эту справку
+
+Файлы:
+  Настройки:  ${CONFIG_FILE}
+  Лог:        ${LOG_FILE}
+  Бэкапы:     ${BACKUP_DIR}
 
 Примеры:
   xkeen-service -b          # Сделать полный бэкап
@@ -183,11 +231,14 @@ show_help() {
   xkeen-service -a          # Добавить автообновление в cron
   xkeen-service -c          # Посмотреть cron
   xkeen-service -s          # Обновить сам скрипт
+  xkeen-service -cfg        # Показать текущие настройки
+  xkeen-service -v          # Показать версию
 EOF
 }
 
 # ------------------------- ОСНОВНАЯ ЛОГИКА -------------------------
 ensure_backup_dir
+ensure_config
 
 case "$1" in
     -b)
@@ -208,6 +259,12 @@ case "$1" in
         ;;
     -s)
         self_update
+        ;;
+    -cfg)
+        show_config
+        ;;
+    -v)
+        show_version
         ;;
     -h)
         show_help

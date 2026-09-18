@@ -58,6 +58,7 @@ HAS_TTY=0
 
 read_tty() {
     local prompt="$1"
+    local answer=""
     if [ "$HAS_TTY" -eq 1 ]; then
         printf "%s" "$prompt" >&2
         IFS= read -r answer < /dev/tty || answer=""
@@ -107,7 +108,7 @@ get_status() {
         INSTALLED_VERSION=""
     fi
 
-    if crontab -l 2>/dev/null | grep -q "xkeen-service -u"; then
+    if crontab -l 2>/dev/null | grep -q "${SCRIPT_CMD} -u"; then
         CRON_ACTIVE=1
     else
         CRON_ACTIVE=0
@@ -223,8 +224,8 @@ do_uninstall() {
     echo ""
     msg_info "${TRASH} Удаление ${SCRIPT_FILE}..."
 
-    if crontab -l 2>/dev/null | grep -q "xkeen-service -u"; then
-        crontab -l 2>/dev/null | grep -v "xkeen-service -u" | crontab -
+    if crontab -l 2>/dev/null | grep -q "${SCRIPT_CMD} -u"; then
+        crontab -l 2>/dev/null | grep -v "${SCRIPT_CMD} -u" | crontab -
         msg_ok "Задание cron удалено"
     fi
 
@@ -341,7 +342,9 @@ main_menu() {
     while :; do
         show_menu
         choice=$(read_tty "   ${WHITE}Выберите пункт [1-3, 0]:${NC} ")
-        echo ""
+        # Сразу очищаем экран после выбора, чтобы старое меню и ввод
+        # не оставались на экране вместе с результатом действия
+        clear 2>/dev/null || true
         case "$choice" in
             1) do_install;   pause_return ;;
             2) do_update;    pause_return ;;

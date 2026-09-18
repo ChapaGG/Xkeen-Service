@@ -22,15 +22,20 @@ LINK_PATH_SBIN="${INSTALL_DIR}/${SCRIPT_CMD}"
 LINK_PATH_BIN="${LINK_DIR}/${SCRIPT_CMD}"
 
 # ---------- ЦВЕТА ----------
-RED='\033[1;31m'
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[1;34m'
-MAGENTA='\033[1;35m'
-CYAN='\033[1;36m'
-WHITE='\033[1;37m'
-GRAY='\033[0;90m'
-NC='\033[0m'
+# Цвета "запекаются" через printf в переменные, а не интерпретируются на лету
+# через `echo -e` (башизм, не гарантированно работает под /bin/sh). printf
+# всегда интерпретирует \033 по POSIX, поэтому дальше везде используется
+# обычный echo/printf без -e/-b - иначе на части прошивок вместо цвета
+# в терминале видны сырые последовательности вида \033[1;32m.
+RED=$(printf '\033[1;31m')
+GREEN=$(printf '\033[1;32m')
+YELLOW=$(printf '\033[1;33m')
+BLUE=$(printf '\033[1;34m')
+MAGENTA=$(printf '\033[1;35m')
+CYAN=$(printf '\033[1;36m')
+WHITE=$(printf '\033[1;37m')
+GRAY=$(printf '\033[0;90m')
+NC=$(printf '\033[0m')
 
 # ---------- СИМВОЛЫ (ASCII, гарантированно работают) ----------
 OK="[+]"
@@ -124,6 +129,36 @@ get_status() {
 # ---------- ПРОВЕРКА ROOT ----------
 [ "$(id -u)" -eq 0 ] || die "Скрипт нужно запускать от имени root."
 
+# ---------- PATH ----------
+# Дочерний процесс (этот скрипт) не может поменять PATH родительской
+# SSH-сессии - это ограничение shell, а не баг. Поэтому: если /opt/sbin уже
+# есть в PATH текущей сессии, ничего не трогаем и ничего не показываем.
+# Если нет - дописываем строку в профиль (сработает для НОВЫХ сессий) и
+# один раз явно объясняем, что для текущей сессии нужно выполнить
+# ". $PROFILE_FILE" (или просто переоткрыть SSH).
+NEED_PATH_NOTICE=0
+
+setup_path() {
+    case ":$PATH:" in
+        *:/opt/sbin:*)
+            # /opt/sbin уже в PATH этой сессии - настраивать нечего
+            return 0
+            ;;
+    esac
+
+    NEED_PATH_NOTICE=1
+    if [ -f "$PROFILE_FILE" ]; then
+        if ! grep -q "/opt/sbin" "$PROFILE_FILE" 2>/dev/null; then
+            echo 'export PATH=/opt/sbin:/opt/bin:$PATH' >> "$PROFILE_FILE"
+            msg_ok "PATH обновлён в ${PROFILE_FILE} (подхватится в новых SSH-сессиях)"
+        else
+            msg_info "PATH уже настроен в ${PROFILE_FILE}, но эта сессия его ещё не подхватила"
+        fi
+    else
+        msg_warn "Файл ${PROFILE_FILE} не найден. Добавьте /opt/sbin:/opt/bin в PATH вручную."
+    fi
+}
+
 # ---------- УСТАНОВКА ----------
 do_install() {
     echo ""
@@ -170,18 +205,7 @@ do_install() {
         msg_ok "Создан файл настроек: ${CONFIG_FILE}"
     fi
 
-    # PATH
-    if [ -f "$PROFILE_FILE" ]; then
-        if ! grep -q "/opt/sbin" "$PROFILE_FILE" 2>/dev/null; then
-            echo 'export PATH=/opt/sbin:/opt/bin:$PATH' >> "$PROFILE_FILE"
-            msg_ok "PATH обновлён в ${PROFILE_FILE}"
-        else
-            msg_info "PATH уже содержит /opt/sbin"
-        fi
-    else
-        msg_warn "Файл ${PROFILE_FILE} не найден. PATH не изменён."
-    fi
-
+    setup_path
     finish_setup
 }
 
@@ -277,18 +301,23 @@ do_uninstall() {
 # ---------- ФИНАЛИЗАЦИЯ ----------
 finish_setup() {
     echo ""
-    echo -e "${GRAY}   ${BAR}${NC}"
-    echo -e "   ${GREEN}${ROCKET} Установка завершена!${NC}"
-    echo -e "${GRAY}   ${BAR}${NC}"
+    printf "${GRAY}   ${BAR}${NC}\n"
+    printf "   ${GREEN}${ROCKET} Установка завершена!${NC}\n"
+    printf "${GRAY}   ${BAR}${NC}\n"
     echo ""
     msg_plain "Запуск:      ${WHITE}xkeen-service -h${NC}"
     msg_plain "           или ${WHITE}xkeen-service.sh -h${NC}"
     msg_plain "Настройки:   ${WHITE}${CONFIG_FILE}${NC}"
     msg_plain "Лог:         ${WHITE}${BACKUP_DIR}/xkeen-service.log${NC}"
     msg_plain "Бэкапы:      ${WHITE}${BACKUP_DIR}${NC}"
-    echo ""
-    msg_info "Для применения PATH перезайдите по SSH или выполните:"
-    echo -e "     ${WHITE}. ${PROFILE_FILE}${NC}"
+
+    if [ "$NEED_PATH_NOTICE" -eq 1 ]; then
+        echo ""
+        msg_info "PATH этой SSH-сессии ещё не обновлён (дочерний процесс не может"
+        msg_plain "изменить PATH родительской сессии). Один раз выполните:"
+        printf "     ${WHITE}. ${PROFILE_FILE}${NC}\n"
+        msg_plain "...или просто переоткройте SSH-подключение."
+    fi
     echo ""
 }
 
@@ -297,43 +326,43 @@ show_menu() {
     get_status
     clear 2>/dev/null || true
     echo ""
-    echo -e "${CYAN}   ██╗  ██╗██╗  ██╗███████╗███████╗███╗   ██╗${NC}"
-    echo -e "${CYAN}   ╚██╗██╔╝██║ ██╔╝██╔════╝██╔════╝████╗  ██║${NC}"
-    echo -e "${CYAN}    ╚███╔╝ █████╔╝ █████╗  █████╗  ██╔██╗ ██║${NC}"
-    echo -e "${CYAN}    ██╔██╗ ██╔═██╗ ██╔══╝  ██╔══╝  ██║╚██╗██║${NC}"
-    echo -e "${CYAN}   ██╔╝ ██╗██║  ██╗███████╗███████╗██║ ╚████║${NC}"
-    echo -e "${CYAN}   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═══╝${NC}"
-    echo -e "${WHITE}                S E R V I C E${NC}"
+    printf "${CYAN}   ██╗  ██╗██╗  ██╗███████╗███████╗███╗   ██╗${NC}\n"
+    printf "${CYAN}   ╚██╗██╔╝██║ ██╔╝██╔════╝██╔════╝████╗  ██║${NC}\n"
+    printf "${CYAN}    ╚███╔╝ █████╔╝ █████╗  █████╗  ██╔██╗ ██║${NC}\n"
+    printf "${CYAN}    ██╔██╗ ██╔═██╗ ██╔══╝  ██╔══╝  ██║╚██╗██║${NC}\n"
+    printf "${CYAN}   ██╔╝ ██╗██║  ██╗███████╗███████╗██║ ╚████║${NC}\n"
+    printf "${CYAN}   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═══╝${NC}\n"
+    printf "${WHITE}                S E R V I C E${NC}\n"
     echo ""
-    echo -e "${GRAY}   ${BAR}${NC}"
+    printf "${GRAY}   ${BAR}${NC}\n"
 
     if [ "$INSTALLED" -eq 1 ]; then
-        echo -e "   ${GREEN}${OK}${NC} Установлен:   ${WHITE}v${INSTALLED_VERSION}${NC}"
+        printf "   ${GREEN}${OK}${NC} Установлен:   ${WHITE}v${INSTALLED_VERSION}${NC}\n"
     else
-        echo -e "   ${RED}${FAIL}${NC} Не установлен"
+        printf "   ${RED}${FAIL}${NC} Не установлен\n"
     fi
 
     if [ "$CONFIG_EXISTS" -eq 1 ]; then
-        echo -e "   ${GREEN}${OK}${NC} Настройки:    ${GRAY}${CONFIG_FILE}${NC}"
+        printf "   ${GREEN}${OK}${NC} Настройки:    ${GRAY}${CONFIG_FILE}${NC}\n"
     else
-        echo -e "   ${YELLOW}${WARN}${NC} Настройки:    ${GRAY}нет${NC}"
+        printf "   ${YELLOW}${WARN}${NC} Настройки:    ${GRAY}нет${NC}\n"
     fi
 
     if [ "$CRON_ACTIVE" -eq 1 ]; then
-        echo -e "   ${GREEN}${OK}${NC} Cron:         ${GRAY}автообновление активно${NC}"
+        printf "   ${GREEN}${OK}${NC} Cron:         ${GRAY}автообновление активно${NC}\n"
     else
-        echo -e "   ${YELLOW}${WARN}${NC} Cron:         ${GRAY}не активно${NC}"
+        printf "   ${YELLOW}${WARN}${NC} Cron:         ${GRAY}не активно${NC}\n"
     fi
 
-    echo -e "${GRAY}   ${BAR}${NC}"
+    printf "${GRAY}   ${BAR}${NC}\n"
     echo ""
-    echo -e "   ${WHITE}1)${NC} ${ROCKET} Установка"
-    echo -e "   ${WHITE}2)${NC} ${GEAR} Обновление"
-    echo -e "   ${WHITE}3)${NC} ${TRASH} Удаление"
-    echo -e "   ${WHITE}0)${NC} Выход"
+    printf "   ${WHITE}1)${NC} ${ROCKET} Установка\n"
+    printf "   ${WHITE}2)${NC} ${GEAR} Обновление\n"
+    printf "   ${WHITE}3)${NC} ${TRASH} Удаление\n"
+    printf "   ${WHITE}0)${NC} Выход\n"
     echo ""
-    echo -e "${GRAY}   ${BAR}${NC}"
-    echo -e "   ${GRAY}Репозиторий: ${REPO_URL}${NC}"
+    printf "${GRAY}   ${BAR}${NC}\n"
+    printf "   ${GRAY}Репозиторий: ${REPO_URL}${NC}\n"
     echo ""
 }
 
